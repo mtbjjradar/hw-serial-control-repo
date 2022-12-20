@@ -1,8 +1,9 @@
 /*
 FLASH Utilized: 4790 bytes
-SRAM  Utilized: 229 bytes
+SRAM  Utilized: 230 bytes
 */
 #include <EEPROM.h>
+#include <NeoHWSerial.h>
 
 const uint16_t BAUD_RATE = 57600;  //Available Baud Rates: 600, 750, 1200, 2400, 4800, 9600, 19200, 38400, 57600
 
@@ -26,7 +27,7 @@ float vSetPoint = 0;   //target output voltage to maintain
 uint16_t loopDelay = 0;  //delay added to stabilize PID control loop
 
 void setup() {
-  Serial.begin(BAUD_RATE);
+  NeoSerial.begin(BAUD_RATE);
   EEPROM.get(KP_EEPROM_ADDR, Kp);
   EEPROM.get(KI_EEPROM_ADDR, Ki);
   EEPROM.get(KD_EEPROM_ADDR, Kd);
@@ -35,84 +36,87 @@ void setup() {
 }
 
 void loop() {
-  //while(1) loop takes less time per iteration than the void loop() by bypassing unnecessary system checks integrated into the void loop()
+  //while(1) loop takes less time per iteration than void loop() by bypassing serial event polling into the loop()
   while(1) {
-    //Check to see if anything is available in the serial receive buffer
-    while (Serial.available()) {
-      static uint8_t command;   //var to hold incoming command, commands are only one byte
-      static uint8_t arg[MAX_ARG_LENGTH];   //array to hold command arguments
-      static uint8_t argPos = 0;  //position counter tracks which bytes of the arg have been received
-      static bool receivingCommand = false;  //flag is set when the command delimiter has been received and is reset when the termination char is received
-      static bool receivingArg = false;     //flag is set when the command delimiter has been received and is reset when the termination char is received
+    processSerialCommands();
+  }
+}
 
-      //Read the next available byte in the serial receive buffer
-      uint8_t inByte = Serial.read();
+static void processSerialCommands() {
+  while (NeoSerial.available()) {
+    static uint8_t command;   //var to hold incoming command, commands are only one byte
+    static uint8_t arg[MAX_ARG_LENGTH];   //array to hold command arguments
+    static uint8_t argPos = 0;  //position counter tracks which bytes of the arg have been received
+    static bool receivingCommand = false;  //flag is set when the command delimiter has been received and is reset when the termination char is received
+    static bool receivingArg = false;     //flag is set when the command delimiter has been received and is reset when the termination char is received
 
-      if(inByte == COMMAND_DELIMITER) {
-        receivingCommand = true;
-      } else if(inByte == ARG_DELIMITER) {
-        receivingArg = true;
-      } else {
-        //command coming in (check not terminating character)
-        if (receivingCommand && inByte != TERMINATION_CHAR) {
-          //Add the incoming byte to our command
-          if(receivingArg) {
-              arg[argPos] = inByte;
-              argPos++;
-          } else {
-              command = inByte;
-          }
-        } else  if(inByte == ')') {
-          //Process the command
-          float arg_f = atof(arg);
-          switch(command) {
-            case 'P' : 
-              EEPROM.put(KP_EEPROM_ADDR, arg_f);
-              Kp = arg_f;
-              break;
-            case 'p' : 
-              Serial.println(Kp);
-              break;
-            case 'I' : 
-              EEPROM.put(KI_EEPROM_ADDR, arg_f);
-              Ki = arg_f;
-              break;
-            case 'i' : 
-              Serial.println(Ki);
-              break;
-            case 'D' : 
-              EEPROM.put(KD_EEPROM_ADDR, arg_f);
-              Kd = arg_f;
-              break;
-            case 'd' : 
-              Serial.println(Kd);
-              break;
-            case 'V' : 
-              EEPROM.put(VSETPOINT_EEPROM_ADDR, arg_f);
-              vSetPoint = arg_f;
-              break;
-            case 'v' : 
-              Serial.println(vSetPoint);
-              break;
-            case 'T' : 
-              EEPROM.put(LOOPDELAY_EEPROM_ADDR, arg_f);
-              loopDelay = arg_f;
-              break;
-            case 't' : 
-              Serial.println(loopDelay);
-              break;
-            default :
-              Serial.println(INVALID_COMMAND_CHAR);
-          }
-          //Reset vars
-          receivingCommand = false;
-          receivingArg = false;
-          command = '\0';    
-          for(uint8_t n = 0; n < MAX_ARG_LENGTH; n++) {
-            arg[n] = '\0';
-          }
-          argPos = 0;
+    //Read the next available byte in the serial receive buffer
+    uint8_t inByte = NeoSerial.read();
+
+    if(inByte == COMMAND_DELIMITER) {
+      receivingCommand = true;
+    } else if(inByte == ARG_DELIMITER) {
+      receivingArg = true;
+    } else {
+      //command coming in (check not terminating character)
+      if (receivingCommand && inByte != TERMINATION_CHAR) {
+        //Add the incoming byte to our command
+        if(receivingArg) {
+            arg[argPos] = inByte;
+            argPos++;
+        } else {
+            command = inByte;
         }
+      } else  if(inByte == TERMINATION_CHAR) {
+        //Process the command
+        float arg_f = atof(arg);
+        switch(command) {
+          case 'P' : 
+            EEPROM.put(KP_EEPROM_ADDR, arg_f);
+            Kp = arg_f;
+            break;
+          case 'p' : 
+            NeoSerial.println(Kp);
+            break;
+          case 'I' : 
+            EEPROM.put(KI_EEPROM_ADDR, arg_f);
+            Ki = arg_f;
+            break;
+          case 'i' : 
+            NeoSerial.println(Ki);
+            break;
+          case 'D' : 
+            EEPROM.put(KD_EEPROM_ADDR, arg_f);
+            Kd = arg_f;
+            break;
+          case 'd' : 
+            NeoSerial.println(Kd);
+            break;
+          case 'V' : 
+            EEPROM.put(VSETPOINT_EEPROM_ADDR, arg_f);
+            vSetPoint = arg_f;
+            break;
+          case 'v' : 
+            NeoSerial.println(vSetPoint);
+            break;
+          case 'T' : 
+            EEPROM.put(LOOPDELAY_EEPROM_ADDR, arg_f);
+            loopDelay = arg_f;
+            break;
+          case 't' : 
+            NeoSerial.println(loopDelay);
+            break;
+          default :
+            NeoSerial.println(INVALID_COMMAND_CHAR);
+        }
+        //Reset vars
+        receivingCommand = false;
+        receivingArg = false;
+        command = '\0';    
+        for(uint8_t n = 0; n < MAX_ARG_LENGTH; n++) {
+          arg[n] = '\0';
+        }
+        argPos = 0;
       }
     }
   }
